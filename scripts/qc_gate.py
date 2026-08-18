@@ -23,8 +23,9 @@ Gates (pagination.md §7):
 Writes <book_dir>/gate-report.json. On PASS copies draft/book.pdf -> final/<slug>.pdf.
 Exit 0 = PASS, 1 = FAIL. (G6 visual judgement is the agent's job on the contact sheet.)
 """
-import json, re, shutil, sys, unicodedata
+import json, math, re, shutil, sys, unicodedata
 from collections import Counter
+from numbers import Real
 from pathlib import Path
 from statistics import median
 
@@ -107,6 +108,46 @@ def _isnum(s):
         return True
     except ValueError:
         return False
+
+
+def classify_bbox(raw_bbox, clip):
+    """Return (status, normalized bbox) for a raw PyMuPDF block bbox."""
+    if (not isinstance(raw_bbox, (list, tuple)) or len(raw_bbox) != 4
+            or any(isinstance(v, bool) or not isinstance(v, Real) for v in raw_bbox)):
+        return "invalid", None
+    try:
+        coords = [float(v) for v in raw_bbox]
+    except (TypeError, ValueError, OverflowError):
+        return "invalid", None
+    if not all(math.isfinite(v) for v in coords):
+        return "invalid", None
+    bbox = fitz.Rect(coords)
+    bbox.normalize()
+    if bbox.is_empty:
+        return "empty", list(bbox)
+    return ("inside" if clip.contains(bbox) else "overflow"), list(bbox)
+
+
+def g3_check(doc):
+    overflows, invalid_bboxes, empty_count = [], [], 0
+    for pno in range(doc.page_count):
+        page = doc[pno]
+        pr = page.rect
+        clip = fitz.Rect(pr.x0 - TOL, pr.y0 - TOL, pr.x1 + TOL, pr.y1 + TOL)
+        for block in page.get_text("dict").get("blocks", []):
+            raw_bbox = block.get("bbox")
+            status, bbox = classify_bbox(raw_bbox, clip)
+            item = {"page": pno + 1,
+                    "kind": "text" if block.get("type") == 0 else "image"}
+            if status == "overflow":
+                overflows.append({**item, "bbox": bbox})
+            elif status == "empty":
+                empty_count += 1
+            elif status == "invalid":
+                invalid_bboxes.append({**item, "bbox": repr(raw_bbox)[:200]})
+    return {"overflows": overflows[:20], "count": len(overflows),
+            "invalid_bboxes": invalid_bboxes[:20], "invalid_count": len(invalid_bboxes),
+            "empty_count": empty_count, "ok": not overflows and not invalid_bboxes}
 
 
 IMG_REF_RE = re.compile(r'!\[[^\]]*\]\((\.\./assets/[^)"\s]+\.svg)(?:\s+"[^"]*")?\)')
@@ -343,19 +384,13 @@ def main():
                      f"— CFF(.otf) @font-face가 원인, TTF로 교체할 것 (convert_fonts.py)")
 
     # ---- G3 overflow ----
-    overflows = []
-    for pno in range(n):
-        page = doc[pno]
-        pr = page.rect
-        clip = fitz.Rect(pr.x0 - TOL, pr.y0 - TOL, pr.x1 + TOL, pr.y1 + TOL)
-        for block in page.get_text("dict").get("blocks", []):
-            bb = fitz.Rect(block["bbox"])
-            if not clip.contains(bb):
-                overflows.append({"page": pno + 1, "bbox": list(block["bbox"]),
-                                  "kind": "text" if block.get("type") == 0 else "image"})
-    report["gates"]["G3"] = {"overflows": overflows[:20], "count": len(overflows), "ok": not overflows}
-    if overflows:
-        fails.append(f"G3: {len(overflows)} bbox overflow(s), first on page {overflows[0]['page']}")
+    g3 = g3_check(doc)
+    report["gates"]["G3"] = g3
+    if g3["count"]:
+        fails.append(f"G3: {g3['count']} bbox overflow(s), first on page {g3['overflows'][0]['page']}")
+    if g3["invalid_count"]:
+        fails.append(f"G3: {g3['invalid_count']} invalid bbox(es), "
+                     f"first on page {g3['invalid_bboxes'][0]['page']}")
 
     # ---- G4 TOC / bookmarks ----
     toc_entries = doc.get_toc(simple=True)
