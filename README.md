@@ -80,6 +80,8 @@
 | `business` | 컨설팅 백서 (navy 시스템·액션 타이틀·키 스탯) | 200×280 | Typst |
 | `magazine` | 트렌드 매거진 (에디토리얼 그리드·풀퀘트 면) | 200×265 | HTML→Chromium |
 
+한글 줄바꿈은 두 엔진 모두 **어절 단위가 기본**입니다(`references/book-anatomy.md` A.1). HTML 트랙은 CSS `keep-all`로, Typst 트랙은 어절 안에 줄바꿈 금지 문자를 넣고 조판 뒤 PDF 글자 층에서 지우는 방식으로 조판합니다. 표 칸은 좁은 단 예외로 음절 단위입니다. `book.json`에 `"linebreak": "syllable"`을 선언하면 책 전체를 음절 단위로 되돌립니다.
+
 `practical`은 표지도 카탈로그입니다 — 기본은 백지 위 오버사이즈 고스트 숫자의 `numeral`이고, `book.json`의 `cover_variant`로 `ribbon`(구 기본)·`block`·`grid`·`obi`를 옵트인할 수 있습니다. 카탈로그 밖 값은 침묵 폴백 없이 즉시 실패합니다.
 
 ## 설치

@@ -106,6 +106,12 @@ def build_typst(book_dir: Path, book: dict, outline: dict, style_dir: Path, toke
     if rp.exists():
         refit = json.loads(rp.read_text(encoding="utf-8"))
 
+    # 한글 줄바꿈 단위(book-anatomy.md A.1): 기본 어절, "syllable"이면 종전 음절 단위
+    lb = str(book.get("linebreak", "eojeol")).lower()
+    if lb not in ("eojeol", "syllable"):
+        die(f'book.json linebreak 미지원: {lb!r}. "eojeol"(기본) 또는 "syllable"')
+    keep_all = lb == "eojeol"
+
     includes = []
     for ch in outline["chapters"]:
         src = book_dir / "chapters" / ch["file"]
@@ -118,7 +124,8 @@ def build_typst(book_dir: Path, book: dict, outline: dict, style_dir: Path, toke
         # `width: 100%`가 걸려 `bf.width: twothirds`가 조판에 도달하지 못했다.
         convert_chapter(src, dst, ch["title"], ch.get("summary"),
                         diagrams_dir=book_dir / "diagrams",
-                        fig_widths=(tokens.get("diagram") or {}).get("widths"))
+                        fig_widths=(tokens.get("diagram") or {}).get("widths"),
+                        keep_all=keep_all)
         prm = refit.get(src.stem, {})
         if prm.get("tracking_em"):
             head, _, rest = dst.read_text(encoding="utf-8").partition("\n")
@@ -141,6 +148,14 @@ def build_typst(book_dir: Path, book: dict, outline: dict, style_dir: Path, toke
     r = subprocess.run(cmd, capture_output=True, text=True)
     if r.returncode != 0:
         die("typst compile:\n" + r.stderr)
+    if keep_all:
+        # 어절 묶음 문자(U+2060)는 글자 층에 남으면 검색·복사·게이트 글자 추출이 깨진다
+        from keep_all import strip_pdf, residual_pages
+        st = strip_pdf(out)
+        left = residual_pages(out)
+        if left:
+            die(f"어절 줄바꿈: 글자 층에 U+2060이 남은 면 {left[:10]}. keep_all.strip_pdf가 못 지운 인코딩")
+        print(f"OK keep-all text layer: {st}")
     print(f"OK draft: {out}")
 
 def build_html(book_dir: Path, book: dict, outline: dict, style_dir: Path):

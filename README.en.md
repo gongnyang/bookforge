@@ -80,6 +80,8 @@ Each style ships a rulebook (`styles/*/STYLE.md`) distilled from measurements of
 | `business` | consulting white paper (navy system, action titles, key stats) | 200×280 | Typst |
 | `magazine` | trend magazine (editorial grid, pull-quote pages) | 200×265 | HTML→Chromium |
 
+Korean line breaking defaults to **word (eojeol) units** on both engines (`references/book-anatomy.md` A.1). The HTML track uses CSS `keep-all`; the Typst track joins the syllables of each word with U+2060 WORD JOINER and strips that character from the PDF text layer after typesetting. Table cells keep syllable breaking as the narrow-column exception. Declare `"linebreak": "syllable"` in `book.json` to switch a whole book back to syllable breaking.
+
 `practical` covers are a catalog too — the default is `numeral` (an oversized ghost numeral on white), and `cover_variant` in `book.json` opts into `ribbon` (the former default), `block`, `grid`, or `obi`. A value outside the catalog fails immediately with no silent fallback.
 
 ## Install

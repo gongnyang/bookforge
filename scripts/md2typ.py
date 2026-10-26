@@ -16,6 +16,14 @@ import json, re, sys
 from pathlib import Path
 from markdown_it import MarkdownIt
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from keep_all import insert_wj  # 한글 어절 단위 줄바꿈(book-anatomy.md A.1)
+
+# A.3 양끝 정렬 실무 상한: 어간 80~130%, 자간 -30~+40(1/1000em). 어절 단위로 줄을 나누면
+# 늘릴 수 있는 자리가 어절 공백뿐이라, 자간까지 함께 나눠 쓰게 해 강(river)을 줄인다.
+KEEP_ALL_PRELUDE = ("#set par(justification-limits: (spacing: (min: 80%, max: 130%), "
+                    "tracking: (min: -0.03em, max: 0.04em)))\n")
+
 MD = MarkdownIt("commonmark").enable("table").enable("strikethrough")
 
 ESC = "\\`#$&_*@<>[]~^"
@@ -31,13 +39,14 @@ def esc(text: str) -> str:
             out.append(ch)
     return "".join(out)
 
-def inline(tokens) -> str:
-    """Render markdown-it inline children to typst markup."""
+def inline(tokens, ka: bool = False) -> str:
+    """Render markdown-it inline children to typst markup.
+    ka=True면 글 조각에 어절 묶음(U+2060)을 넣는다. 표 칸은 넣지 않는다(A.1 좁은 단 예외)."""
     out = []
     for t in tokens:
         ty = t.type
         if ty == "text":
-            out.append(esc(t.content))
+            out.append(esc(insert_wj(t.content) if ka else t.content))
         elif ty == "code_inline":
             content = t.content.replace("`", "\\`")
             out.append(f"#raw(\"{content_escape(t.content)}\")")
@@ -120,18 +129,20 @@ def fig_width_mm(src: str, ctx) -> float | None:
     return float(v)
 
 def render_tokens(tokens, ctx) -> str:
+    ka = ctx.get("keep_all", False)
+    wj = insert_wj if ka else (lambda s: s)
     out, i = [], 0
     while i < len(tokens):
         t = tokens[i]
         ty = t.type
         if ty == "heading_open":
             level = int(t.tag[1])
-            content = inline(tokens[i + 1].children or [])
+            content = inline(tokens[i + 1].children or [], ka)
             i += 3
             if level == 1:
                 if not ctx["chapter_emitted"]:
                     summary = ctx.get("summary")
-                    s = f", summary: [{esc(summary)}]" if summary else ""
+                    s = f", summary: [{esc(wj(summary))}]" if summary else ""
                     out.append(f'#bf-chapter("{content_escape(ctx["title_raw"])}"{s})\n')
                     ctx["chapter_emitted"] = True
                 # extra H1s demoted
@@ -154,7 +165,7 @@ def render_tokens(tokens, ctx) -> str:
                     attrs = dict(im.attrs)
                     src = attrs.get("src", "")
                     title = attrs.get("title", "") or ""
-                    cap = inline(im.children or []) or None
+                    cap = inline(im.children or [], ka) or None
                     source = None
                     m = re.match(r"출처\s*[:：]\s*(.+)", title)
                     if m:
@@ -169,7 +180,7 @@ def render_tokens(tokens, ctx) -> str:
                         args.append(f"width: {w:g}mm")
                     out.append(f'#bf-fig({", ".join(args)})\n')
             else:
-                out.append(inline(children) + "\n")
+                out.append(inline(children, ka) + "\n")
             i += 3
             continue
         if ty == "fence":
@@ -261,9 +272,10 @@ def render_table(tokens, ctx, cap=None) -> str:
           + ("".join(", " + c for c in cells)) + ")"
     if cap:
         title, source = cap
-        args = [f"caption: [{esc(title)}]"]
+        wj = insert_wj if ctx.get("keep_all") else (lambda s: s)
+        args = [f"caption: [{esc(wj(title))}]"]
         if source:
-            args.append(f"source: [{esc(source)}]")
+            args.append(f"source: [{esc(wj(source))}]")
         return f"#bf-tbl({', '.join(args)}, {tbl})\n"
     return f"#bf-tbl({tbl})\n"
 
@@ -295,14 +307,18 @@ def split_callouts(md: str):
 
 def convert_chapter(md_path: Path, out_path: Path, title: str, summary: str | None,
                     img_prefix: str = "../../assets/",
-                    diagrams_dir: Path | None = None, fig_widths: dict | None = None) -> None:
+                    diagrams_dir: Path | None = None, fig_widths: dict | None = None,
+                    keep_all: bool = False) -> None:
     """`diagrams_dir`+`fig_widths`(= tokens.diagram.widths)가 주어지면 도해 사이드카의
     `bf.width`를 `#bf-fig(..., width: Nmm)`로 발행한다. 둘 중 하나라도 없으면 종전대로
     width 인자를 생략해 base.typ 기본 `100%`로 떨어진다(단독 CLI 실행 경로)."""
     md = md_path.read_text(encoding="utf-8")
     ctx = {"chapter_emitted": False, "title_raw": title, "summary": summary,
-           "img_prefix": img_prefix, "diagrams_dir": diagrams_dir, "fig_widths": fig_widths}
+           "img_prefix": img_prefix, "diagrams_dir": diagrams_dir, "fig_widths": fig_widths,
+           "keep_all": keep_all}
     parts = ['#import "../_style/theme.typ": *\n']
+    if keep_all:
+        parts.append(KEEP_ALL_PRELUDE)
     for seg in split_callouts(md):
         if seg[0] == "md":
             parts.append(render_tokens(MD.parse(seg[1]), ctx))
@@ -329,10 +345,10 @@ def convert_chapter(md_path: Path, out_path: Path, title: str, summary: str | No
                 if kind == "pull":  # 풀퀘트는 HTML 전용 — Typst 트랙에선 인용으로 강등
                     kind = "quote"
                 inner = render_tokens(MD.parse(body), ctx).strip()
-                targ = f"title: [{esc(title_c)}], " if title_c else ""
+                targ = f"title: [{esc(insert_wj(title_c) if keep_all else title_c)}], " if title_c else ""
                 parts.append(f'#bf-callout(kind: "{kind}", {targ})[{inner}]\n'.replace(", )", ")"))
     if not ctx["chapter_emitted"]:
-        s = f", summary: [{esc(summary)}]" if summary else ""
+        s = f", summary: [{esc(insert_wj(summary) if keep_all else summary)}]" if summary else ""
         parts.insert(1, f'#bf-chapter("{content_escape(title)}"{s})\n')
     out_path.write_text("\n".join(parts), encoding="utf-8")
 
