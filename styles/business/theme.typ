@@ -282,8 +282,10 @@
 // breakable — 판면보다 긴 표를 unbreakable 블록에 넣으면 Typst가 넘친 행을
 // 쪽 하단 한 줄에 0높이로 겹쳐 찍는다(issue #7). 쪽넘김 + table.header 반복이 정답.
 #let bf-tbl(caption: none, source: none, body) = block(breakable: true, above: 6mm, below: 6mm, width: 100%, {
+  set par(spacing: 0.65em)  // 표 묶음 안은 본문 문단 간격을 따르지 않는다(base.typ bf-tbl-base와 같은 이유)
   if caption != none {
-    context {
+    // sticky: 면 끝에 캡션만 남지 않게 표 첫 행과 붙인다
+    block(sticky: true, below: 2mm, context {
       biz-tbl.step()
       let n = chapter-state.get().num
       let m = biz-tbl.get().first() + 1
@@ -291,8 +293,7 @@
         "<표 " + str(n) + "-" + str(m) + ">")
       h(0.5em)
       text(font: TT.sans-font, size: 9.5pt, weight: "semibold", fill: ink, caption)
-    }
-    v(2mm)
+    })
   }
   body
   if source != none {

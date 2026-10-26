@@ -132,8 +132,10 @@
 // 표: 콘텐츠가 [표] 캡션을 준 경우에만 번호 라벨. 캡션 없으면 표만 렌더.
 // breakable — unbreakable 블록 속 긴 표는 넘친 행이 쪽 하단에 0높이로 겹친다(issue #7)
 #let bf-tbl(caption: none, source: none, body) = block(breakable: true, above: 6mm, below: 6mm, width: 100%, {
+  set par(spacing: 0.65em)  // 표 묶음 안은 본문 문단 간격을 따르지 않는다(base.typ bf-tbl-base와 같은 이유)
   if caption != none {
-    context {
+    // sticky: 면 끝에 캡션만 남지 않게 표 첫 행과 붙인다
+    block(sticky: true, below: 2mm, context {
       tbl-counter.step()
       let n = chapter-state.get().num
       let m = tbl-counter.get().first() + 1
@@ -143,8 +145,7 @@
         h(0.5em)
         text(font: TT.sans-font, size: 8.5pt, fill: ink, caption)
       })
-    }
-    v(2mm)
+    })
   }
   align(center, block(stroke: (bottom: 1pt + ink), inset: 0pt, body))  // booktabs bottomrule
   if source != none {

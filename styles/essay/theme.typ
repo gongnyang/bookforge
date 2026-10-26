@@ -120,9 +120,10 @@
 // 표(에세이엔 드묾): 번호 라벨 없이 캡션·출처만 조용히
 // breakable — unbreakable 블록 속 긴 표는 넘친 행이 쪽 하단에 0높이로 겹친다(issue #7)
 #let bf-tbl(caption: none, source: none, body) = block(breakable: true, above: 1.3em, below: 1.3em, width: 100%, {
+  set par(spacing: 0.65em)  // 표 묶음 안은 본문 문단 간격을 따르지 않는다(base.typ bf-tbl-base와 같은 이유)
   if caption != none {
-    text(font: TT.sans-font, size: 8.5pt, fill: TT.muted, caption)
-    v(2mm)
+    // sticky: 면 끝에 캡션만 남지 않게 표 첫 행과 붙인다
+    block(sticky: true, below: 2mm, text(font: TT.sans-font, size: 8.5pt, fill: TT.muted, caption))
   }
   body
   if source != none {
@@ -143,7 +144,7 @@
     linebreak()
     [초판 1쇄 발행 #meta.at("date", default: "")]
     linebreak()
-    [지은이 #meta.at("author", default: "bookforge") · 펴낸곳 bookforge]
+    [지은이 #meta.at("author", default: "bookforge") · 펴낸곳 #meta.at("publisher", default: "bookforge")]
     linebreak()
     [조판 bookforge · 본문 Noto Serif KR · 표지·라벨 Pretendard]
   })

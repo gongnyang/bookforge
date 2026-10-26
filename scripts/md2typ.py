@@ -29,7 +29,13 @@ def esc(text: str) -> str:
             out.append("\\/")  # avoid `//` comment
         else:
             out.append(ch)
-    return "".join(out)
+    s = "".join(out)
+    # 내용 블록([…]) 맨 앞 글자가 Typst 줄머리 문법으로 읽히지 않게 막는다. 표 칸·캡션·출처는
+    # 블록 첫머리라 「9. 22.」「1. 공고 대조」가 번호 목록, 「- 없음」이 글머리표, 「= 같음」이
+    # 제목으로 조판됐다. `\.`·`\-`·`\+`·`\=`는 같은 글자로 찍히므로 문장 중간 조각에 걸려도 무해하다.
+    s = re.sub(r"^(\d+)\.(?=\s|$)", r"\1\\.", s)
+    s = re.sub(r"^([-+=])(?=\s|$)", r"\\\1", s)
+    return s
 
 def inline(tokens) -> str:
     """Render markdown-it inline children to typst markup."""
